@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Radish or Tissue?</title>
+    <style>
+        :root {
+            --paper-bg: #FAF3E0;
+            --ink-color: #2c3e50;
+            --highlight: #FF6B6B;
+            --accent-blue: #4ECDC4;
+            --hand-font: "Short Stack", "Patrick Hand", "Comic Sans MS", cursive, sans-serif;
+        }
+
+        @import url('https://fonts.googleapis.com/css2?family=Short+Stack&display=swap');
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: var(--hand-font);
+            background-color: var(--paper-bg);
+            /* 波点背景 */
+            background-image: radial-gradient(#D7CCC8 2px, transparent 2px);
+            background-size: 24px 24px;
+            color: var(--ink-color);
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            /* Mobile Safari fix */
+            height: -webkit-fill-available;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            touch-action: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            /* 还原旧版本的 PC 布局逻辑：限制最大宽度并保持比例 */
+            max-width: 500px;
+            aspect-ratio: 9/16;
+            /* 在宽屏上如果高度溢出，也需要限制 */
+            max-height: 90vh;
+
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            /* 旧版本不需要额外的背景色或边框，因为它融入了 body */
+        }
+
+        /* 视频容器 - 长方形拍立得风格 - 左上角 */
+        #video-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 120px;
+            height: 90px;
+            border-radius: 8px;
+            /* 圆角矩形 */
+            overflow: hidden;
+            border: 3px solid var(--ink-color);
+            transform: scaleX(-1);
+            z-index: 50;
+            box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.1);
+            background: #FFF;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        canvas {
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            pointer-events: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* HUD - 贴纸风格 - 绝对定位布局 */
+        .hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 0;
+            z-index: 60;
+            /* 必须比视频高，或者错开 */
+            pointer-events: none;
+        }
+
+        /* 分数 - 右上角 */
+        .score-tape {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            background: #FFD93D;
+            padding: 8px 15px;
+            transform: rotate(-2deg);
+            border: 3px solid var(--ink-color);
+            border-radius: 5px 15px 5px 25px;
+            font-size: 20px;
+            font-weight: 700;
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2);
+            color: var(--ink-color);
+            white-space: nowrap;
+        }
+
+        /* 计时器 - 顶部中间 */
+        .timer-tape {
+            position: absolute;
+            left: 50%;
+            top: 20px;
+            transform: translateX(-50%) rotate(2deg);
+            background: #FF6B6B;
+            padding: 8px 15px;
+            border: 3px solid var(--ink-color);
+            border-radius: 15px 5px 25px 5px;
+            font-size: 20px;
+            font-weight: 700;
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2);
+            color: #FFF;
+        }
+
+        /* 底部进度条 - 半调风格 */
+        .progress-bar-container {
+            position: absolute;
+            bottom: 8vh;
+            /* 使用 vh 适配不同高度 */
+            left: 10%;
+            width: 80%;
+            height: 24px;
+            background: #FFF;
+            border: 3px solid var(--ink-color);
+            border-radius: 12px;
+            overflow: hidden;
+            z-index: 40;
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.1);
+        }
+
+        #progress-inner {
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(45deg,
+                    var(--highlight),
+                    var(--highlight) 10px,
+                    #FF8E8E 10px,
+                    #FF8E8E 20px);
+            border-right: 3px solid var(--ink-color);
+            transition: width 0.016s linear;
+        }
+
+        /* 物品区 - 使用 vh 相对定位 */
+        .target-area {
+            position: absolute;
+            bottom: 20vh;
+            /* 提高位置防止某些刘海屏遮挡 */
+            width: 18vh;
+            /* 大小随屏幕高度变化，保持比例 */
+            height: 18vh;
+            max-width: 140px;
+            max-height: 140px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .target-area svg {
+            width: 90%;
+            height: 90%;
+            filter: drop-shadow(5px 5px 0px rgba(0, 0, 0, 0.15));
+            transition: transform 0.2s;
+        }
+
+        .active-target svg {
+            transform: scale(1.2) rotate(10deg);
+            filter: drop-shadow(8px 8px 0px rgba(0, 0, 0, 0.2));
+        }
+
+        #command-display {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%;
+            text-align: center;
+            z-index: 40;
+            pointer-events: none;
+        }
+
+        #command-icon {
+            animation: doodleFloat 3s ease-in-out infinite;
+        }
+
+        @keyframes doodleFloat {
+
+            0%,
+            100% {
+                transform: translateY(0) rotate(-2deg);
+            }
+
+            50% {
+                transform: translateY(-10px) rotate(2deg);
+            }
+        }
+
+        /* 补充缺失的 spin 动画 */
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* 涂鸦按钮 */
+        .btn {
+            background: #FFF;
+            color: var(--ink-color);
+            border: 3px solid var(--ink-color);
+            padding: 15px 40px;
+            font-family: var(--hand-font);
+            font-size: 28px;
+            font-weight: 700;
+            border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+            box-shadow: 5px 5px 0 var(--ink-color);
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+
+        .btn:active {
+            transform: translate(3px, 3px);
+            box-shadow: 2px 2px 0 var(--ink-color);
+        }
+
+        /* 覆盖层 */
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(250, 243, 224, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            padding: 20px;
+            /* 减小 padding 适配小屏 */
+            text-align: center;
+        }
+
+        h1 {
+            font-size: min(42px, 8vw);
+            /* 自适应字体 */
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 0 #CAD3C8;
+            transform: rotate(-3deg);
+        }
+
+        strong {
+            color: var(--highlight);
+            text-decoration: underline wavy;
+        }
+
+        .svg-lib {
+            display: none;
+        }
+
+        /* --- 放到最后，确保优先级覆盖默认样式 --- */
+        /* 针对移动端全屏优化：取消宽高比限制，铺满 */
+        @media (max-width: 500px) {
+            #game-container {
+                max-width: none;
+                max-height: none;
+                aspect-ratio: auto;
+                height: 100vh;
+            }
+
+            /* 避开手机刘海/状态栏 */
+            #video-container {
+                top: 60px;
+            }
+
+            .score-tape {
+                top: 60px;
+            }
+
+            .timer-tape {
+                top: 60px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- SVG Library (Doodle Style) -->
+    <svg class="svg-lib">
+        <!-- 侧视纸巾盒：更立体的盒子，明显的白色抽纸 -->
+        <symbol id="icon-tissue" viewBox="0 0 100 100">
+            <!-- 盒子阴影 -->
+            <path d="M15 80 L85 80 L95 70 L25 70 Z" fill="rgba(0,0,0,0.1)" />
+            <!-- 盒子侧面 -->
+            <path d="M20 50 L20 80 L80 80 L80 50" fill="#4ECDC4" stroke="#2c3e50" stroke-width="3"
+                stroke-linecap="round" stroke-linejoin="round" />
+            <!-- 盒子顶面 -->
+            <path d="M20 50 L35 30 L95 30 L80 50 Z" fill="#4ECDC4" stroke="#2c3e50" stroke-width="3"
+                stroke-linejoin="round" />
+            <!-- 盒子右侧面 -->
+            <path d="M80 50 L95 30 L95 60 L80 80 Z" fill="#2EAF9E" stroke="#2c3e50" stroke-width="3"
+                stroke-linejoin="round" />
+            <!-- 抽出的纸巾 (波浪形) -->
+            <path d="M50 40 Q40 10 70 20 Q80 30 65 40" fill="#FFF" stroke="#2c3e50" stroke-width="3"
+                stroke-linejoin="round" />
+            <!-- 表情 -->
+            <circle cx="45" cy="65" r="4" fill="#2c3e50" />
+            <circle cx="65" cy="65" r="4" fill="#2c3e50" />
+            <path d="M52 70 Q55 75 58 70" fill="none" stroke="#2c3e50" stroke-width="3" stroke-linecap="round" />
+        </symbol>
+
+        <!-- 涂鸦萝卜：粗糙线条，更可爱 -->
+        <symbol id="icon-radish" viewBox="0 0 100 100">
+            <!-- 叶子 -->
+            <path d="M50 30 Q30 5 40 40" fill="none" stroke="#2c3e50" stroke-width="4" stroke-linecap="round" />
+            <path d="M50 30 Q70 5 60 40" fill="none" stroke="#2c3e50" stroke-width="4" stroke-linecap="round" />
+            <path d="M50 30 Q50 0 50 25" fill="none" stroke="#2c3e50" stroke-width="4" stroke-linecap="round" />
+            <!-- 身体 -->
+            <path d="M30 35 Q10 70 50 95 Q90 70 70 35 Q50 25 30 35 Z" fill="#FF8E8E" stroke="#2c3e50" stroke-width="4"
+                stroke-linejoin="round" />
+            <!-- 表情 -->
+            <circle cx="40" cy="55" r="4" fill="#2c3e50" />
+            <circle cx="60" cy="55" r="4" fill="#2c3e50" />
+            <path d="M48 62 H52" stroke="#2c3e50" stroke-width="3" stroke-linecap="round" />
+            <!-- 纹理线条 -->
+            <path d="M35 45 H42 M60 75 H68" stroke="#2c3e50" stroke-width="2" opacity="0.5" />
+        </symbol>
+
+        <symbol id="icon-brain" viewBox="0 0 100 100">
+            <path d="M20 50 C20 20 40 10 50 20 C60 10 80 20 80 50 C80 80 20 80 20 50" fill="#FFD93D" stroke="#2c3e50"
+                stroke-width="4" stroke-linejoin="round" />
+            <path d="M50 20 V80" stroke="#2c3e50" stroke-width="3" stroke-dasharray="5,5" />
+        </symbol>
+    </svg>
+
+    <div id="game-container">
+        <div id="video-container">
+            <video id="webcam" autoplay playsinline muted></video>
+        </div>
+
+        <div class="hud">
+            <!-- 直接绝对定位，不再 flex -->
+            <div class="score-tape">
+                IQ: <span id="score-display">0</span>
+            </div>
+            <div class="timer-tape">
+                <span id="time-display">60</span>s
+            </div>
+        </div>
+
+        <div id="area-radish" class="target-area">
+            <svg>
+                <use href="#icon-radish" />
+            </svg>
+        </div>
+        <div id="area-tissue" class="target-area">
+            <svg>
+                <use href="#icon-tissue" />
+            </svg>
+        </div>
+
+        <div id="command-display">
+            <div id="command-icon"></div>
+        </div>
+
+        <div class="progress-bar-container">
+            <div id="progress-inner"></div>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Loading Screen -->
+        <div id="loading-screen" class="overlay">
+            <div class="spinner"
+                style="border: 4px solid var(--ink-color); border-top-color: transparent; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s infinite linear;">
+            </div>
+            <h1 style="margin-top: 20px;" data-key="loading">正在准备纸笔...</h1>
+            <p id="loading-status" style="opacity: 0.6; font-family: monospace;"></p>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="overlay" style="display: none;">
+            <svg width="120" height="120" style="transform: rotate(5deg); margin-bottom: 20px;">
+                <use href="#icon-radish" />
+            </svg>
+            <h1 data-key="title">萝卜还是纸巾?</h1>
+            <p style="font-size: 20px; line-height: 1.6; margin-bottom: 40px;" data-key="intro">
+                用你的 <strong>手掌 (爪子)</strong> 作为光标<br>
+                快速点击屏幕上的物品!
+            </p>
+            <button class="btn" onclick="startGame()" data-key="startBtn">开始涂鸦!</button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="overlay" style="display: none;">
+            <h1 data-key="gameOver">游戏结束</h1>
+            <div class="score-tape" style="transform: scale(1.5) rotate(-3deg); margin: 40px 0;">
+                IQ: <span id="final-stats">0</span>
+            </div>
+            <button class="btn" onclick="location.reload()" data-key="retryBtn">再玩一次</button>
+        </div>
+    </div>
+
+    <script type="module">
+        let FilesetResolver, HandLandmarker, handLandmarker;
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // --- STRICT I18N ---
+        const TEXTS = {
+            zh: {
+                loading: "正在准备纸笔...",
+                title: "萝卜还是纸巾?",
+                intro: "用你的 <strong>手掌 (爪子)</strong> 作为光标<br>快速点击屏幕上的物品!",
+                startBtn: "开始涂鸦!",
+                gameOver: "游戏结束",
+                retryBtn: "再玩一次",
+                radish: "萝卜",
+                tissue: "纸巾",
+                good: ["好耶!", "漂亮!", "天才!"],
+                bad: ["哎呀...", "错啦!", "笨笨..."],
+                netError: "网络似乎断了..."
+            },
+            en: {
+                loading: "Preparing paper & ink...",
+                title: "Radish or Tissue?",
+                intro: "Use your <strong>PALM (Paw)</strong> as a cursor<br>to tap the items quickly!",
+                startBtn: "Start Doodling!",
+                gameOver: "Game Over",
+                retryBtn: "Try Again",
+                radish: "Radish",
+                tissue: "Tissue",
+                good: ["Nice!", "Great!", "Genius!"],
+                bad: ["Oops...", "Wrong!", "Silly..."],
+                netError: "Network error..."
+            }
+        };
+
+        const urlParams = new URLSearchParams(window.location.search);
+        let currentLang = urlParams.get('lang') === 'zh' ? 'zh' : 'en';
+
+        // 立即执行一次文本更新确保 HTML 里的默认文本被覆盖（如果有 JS 加载延迟）
+        updateLanguageUI();
+
+        function updateLanguageUI() {
+            const t = TEXTS[currentLang];
+            document.title = t.title;
+            // 更新所有带有 data-key 属性的元素
+            document.querySelectorAll('[data-key]').forEach(el => {
+                const key = el.getAttribute('data-key');
+                if (t[key]) el.innerHTML = t[key];
+            });
+        }
+
+        // --- 1€ Filter (UPDATED PARAMS) ---
+        class OneEuroFilter {
+            constructor(minCutoff = 1.0, beta = 0.05) {
+                this.minCutoff = minCutoff; this.beta = beta;
+                this.x = 0; this.dx = 0; this.lastTime = null;
+            }
+            alpha(cutoff, dt) { let tau = 1.0 / (2 * Math.PI * cutoff); return 1.0 / (1.0 + tau / dt); }
+            filter(value, timestamp) {
+                if (this.lastTime === null) { this.lastTime = timestamp; this.x = value; return value; }
+                const dt = (timestamp - this.lastTime) / 1000.0; this.lastTime = timestamp;
+                const dval = (value - this.x) / dt;
+                const dalpha = this.alpha(1.0, dt);
+                this.dx = dalpha * dval + (1 - dalpha) * this.dx;
+                const cutoff = this.minCutoff + this.beta * Math.abs(this.dx);
+                const alpha = this.alpha(cutoff, dt);
+                this.x = alpha * value + (1 - alpha) * this.x;
+                return this.x;
+            }
+        }
+
+        // Tweaked parameters: minCutoff 1.5 (responsive), beta 0.01 (balanced)
+        const filters = { x: new OneEuroFilter(1.5, 0.01), y: new OneEuroFilter(1.5, 0.01) };
+
+        // --- GAME STATE ---
+        let score = 0, gameActive = false, currentCommand = null, canInteract = false;
+        let commandTimerInterval = null, commandTimeout = null;
+        let timeLeft = 60, gameTimerInterval = null;
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function speak(text) {
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = currentLang === 'zh' ? 'zh-CN' : 'en-US';
+            utter.rate = 1.2;
+            window.speechSynthesis.speak(utter);
+        }
+
+        // --- RENDERER (涂鸦猫爪) ---
+        // New: Calculated smoothing based on Landmarks, return Coordinates
+        function getSmoothedPalm(landmarks, w, h) {
+            const rawPalmX = (1 - (landmarks[0].x + landmarks[5].x + landmarks[17].x) / 3) * w;
+            const rawPalmY = (landmarks[0].y + landmarks[5].y + landmarks[17].y) / 3 * h;
+
+            const palmX = filters.x.filter(rawPalmX, performance.now());
+            const palmY = filters.y.filter(rawPalmY, performance.now());
+
+            return { x: palmX, y: palmY };
+        }
+
+        // Renamed Draw function taking coordinates
+        function drawCatPaw(x, y) {
+            const w = canvas.width, h = canvas.height;
+            const palmX = x;
+            const palmY = y;
+
+            ctx.save();
+            ctx.lineJoin = "round";
+            ctx.lineCap = "round";
+
+            // 白色填充，深色描边
+            ctx.fillStyle = "#FFF";
+            ctx.strokeStyle = "#2c3e50";
+            ctx.lineWidth = 5;
+
+            // 1. 手掌
+            ctx.beginPath();
+            // 稍微画得不规则一点
+            ctx.ellipse(palmX, palmY, 32, 38, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // 2. 涂鸦详情：加上几笔作为“毛”
+            ctx.beginPath();
+            ctx.lineWidth = 2;
+            ctx.moveTo(palmX - 35, palmY); ctx.lineTo(palmX - 45, palmY - 5);
+            ctx.moveTo(palmX + 35, palmY); ctx.lineTo(palmX + 45, palmY - 5);
+            ctx.stroke();
+
+            // 3. 肉垫 (粉色)
+            const offsets = [
+                { dx: -38, dy: -28, r: 11 },
+                { dx: -20, dy: -50, r: 13 },
+                { dx: 5, dy: -58, r: 13 },
+                { dx: 30, dy: -48, r: 13 },
+                { dx: 48, dy: -18, r: 10 }
+            ];
+
+            offsets.forEach(off => {
+                const px = palmX + off.dx * 0.85;
+                const py = palmY + off.dy * 0.85;
+                ctx.beginPath();
+                ctx.fillStyle = "#FFB7B7";
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = "#2c3e50";
+
+                // 模拟手绘圆: 简单的 arc 即可，靠粗边框撑起风格
+                ctx.arc(px, py, off.r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // 高光
+                ctx.beginPath();
+                ctx.strokeStyle = "rgba(255,255,255,0.6)";
+                ctx.lineWidth = 2;
+                ctx.arc(px - 3, py - 3, 3, Math.PI, 1.5 * Math.PI);
+                ctx.stroke();
+            });
+
+            ctx.restore();
+
+            return { x: (palmX + offsets[2].dx * 0.85) / w, y: (palmY + offsets[2].dy * 0.85) / h };
+        }
+
+        // --- Failsafe: Ensure something shows up ---
+        setTimeout(() => {
+            const loading = document.getElementById('loading-screen');
+            const start = document.getElementById('start-screen');
+            if (loading && loading.style.display !== 'none' && start && start.style.display === 'none') {
+                console.warn("Loading slow, updating status...");
+                const status = document.getElementById('loading-status');
+                if (status) status.innerText += "\n(Waiting for camera or resources...)";
+            }
+        }, 3000);
+
+        async function initAI() {
+            const status = document.getElementById('loading-status');
+            const LOCAL_RES = {
+                js: "../lib/mediapipe/0.10.3/vision_bundle.mjs",
+                wasm: "../lib/mediapipe/0.10.3",
+                model: "../lib/mediapipe/models/hand_landmarker.task"
+            };
+
+            try {
+                if (status) status.innerText = "Loading Vision Module...";
+                const module = await import(LOCAL_RES.js);
+
+                if (status) status.innerText = "Initializing Detector...";
+                FilesetResolver = module.FilesetResolver; HandLandmarker = module.HandLandmarker;
+                const vision = await FilesetResolver.forVisionTasks(LOCAL_RES.wasm);
+                handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                    baseOptions: { modelAssetPath: LOCAL_RES.model, delegate: "GPU" },
+                    // 降低识别门槛，防止快速移动时丢失导致的闪烁
+                    minHandDetectionConfidence: 0.3,
+                    minHandPresenceConfidence: 0.3,
+                    runningMode: "VIDEO", numHands: 1
+                });
+
+                if (status) status.innerText = "Requesting Camera...";
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 480 }, height: { ideal: 640 } } });
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    document.getElementById('loading-screen').style.display = 'none';
+                    document.getElementById('start-screen').style.display = 'flex';
+                    // 再次更新 UI 以防万一
+                    updateLanguageUI();
+                    requestAnimationFrame(gameLoop);
+                };
+            } catch (e) {
+                console.error(e);
+                if (status) {
+                    status.innerHTML = `<span style="color:red; font-weight:bold;">${TEXTS[currentLang].netError}</span><br><small>${e.message}</small><br><br><button class="btn" style="padding:10px; font-size:16px;" onclick="forceStart()">Ignore & Start</button>`;
+                }
+            }
+        }
+
+        window.forceStart = () => {
+            document.getElementById('loading-screen').style.display = 'none';
+            document.getElementById('start-screen').style.display = 'flex';
+        };
+
+        window.startGame = () => {
+            gameActive = true; score = 0;
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('score-display').innerText = '0';
+
+            // 重置倒计时
+            timeLeft = 60;
+            document.getElementById('time-display').innerText = timeLeft;
+            if (gameTimerInterval) clearInterval(gameTimerInterval);
+            gameTimerInterval = setInterval(() => {
+                if (!gameActive) return;
+                timeLeft--;
+                document.getElementById('time-display').innerText = timeLeft;
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+
+            nextCommand();
+        };
+
+        function nextCommand() {
+            if (!gameActive) return;
+            const choices = ['radish', 'tissue'];
+            const roll = choices[Math.floor(Math.random() * choices.length)];
+
+            const iconEl = document.getElementById('command-icon');
+            const radishArea = document.getElementById('area-radish');
+            const tissueArea = document.getElementById('area-tissue');
+            const progressInner = document.getElementById('progress-inner');
+
+            const isSwapped = Math.random() > 0.5;
+            // 增加一点随机偏移，让布局由于“手绘”而不那么死板
+            const randY = () => (Math.random() * 20 - 10) + 'px';
+
+            radishArea.style.left = isSwapped ? 'auto' : '20px';
+            radishArea.style.right = isSwapped ? '20px' : 'auto';
+            radishArea.style.transform = `translateY(${randY()})`;
+
+            tissueArea.style.left = isSwapped ? '20px' : 'auto';
+            tissueArea.style.right = isSwapped ? 'auto' : '20px';
+            tissueArea.style.transform = `translateY(${randY()})`;
+
+            currentCommand = roll;
+            canInteract = true;
+
+            iconEl.innerHTML = `<svg width="160" height="160"><use href="#icon-${roll}"/></svg>`;
+            iconEl.style.display = 'block';
+
+            speak(TEXTS[currentLang][roll]);
+
+            if (commandTimerInterval) clearInterval(commandTimerInterval);
+            if (commandTimeout) clearTimeout(commandTimeout);
+
+            let startTime = performance.now();
+            const DURATION = 2000;
+
+            // 重置进度条为满
+            progressInner.style.transition = 'none';
+            progressInner.style.width = '100%';
+            // 强制回流
+            progressInner.offsetHeight;
+            progressInner.style.transition = 'width 0.016s linear';
+
+            commandTimerInterval = setInterval(() => {
+                let elapsed = performance.now() - startTime;
+                let percent = Math.max(0, 100 - (elapsed / DURATION) * 100);
+                progressInner.style.width = percent + '%';
+                if (percent <= 0) clearInterval(commandTimerInterval);
+            }, 16);
+
+            commandTimeout = setTimeout(() => {
+                if (canInteract && currentCommand === roll) {
+                    handleResult(false);
+                }
+            }, DURATION);
+        }
+
+        function handleResult(correct) {
+            if (!gameActive) return;
+            canInteract = false;
+
+            if (commandTimerInterval) clearInterval(commandTimerInterval);
+            if (commandTimeout) clearTimeout(commandTimeout);
+
+            const t = TEXTS[currentLang];
+            if (correct) {
+                score += 10;
+                // 随机夸奖
+                const praise = t.good[Math.floor(Math.random() * t.good.length)];
+                speak(praise);
+
+                const activeEl = document.getElementById(`area-${currentCommand}`);
+                activeEl.classList.add('active-target');
+                setTimeout(() => activeEl.classList.remove('active-target'), 300);
+            } else {
+                score = Math.max(0, score - 5);
+                const scold = t.bad[Math.floor(Math.random() * t.good.length)];
+                speak(scold);
+            }
+            document.getElementById('score-display').innerText = score;
+
+            // if (score >= 200) endGame(); // 移除分数获胜条件，改为时间结束
+
+            setTimeout(() => {
+                if (gameActive) nextCommand();
+            }, 600);
+        }
+
+        function endGame() {
+            gameActive = false;
+            // 清除计时器
+            if (gameTimerInterval) clearInterval(gameTimerInterval);
+            if (commandTimerInterval) clearInterval(commandTimerInterval);
+            if (commandTimeout) clearTimeout(commandTimeout);
+
+            document.getElementById('game-over-screen').style.display = 'flex';
+            document.getElementById('final-stats').innerText = score;
+            window.parent.postMessage({ type: 'GAME_OVER', score: score }, '*');
+        }
+
+        function isPointInRect(px, py, rect) {
+            return px >= rect.left && px <= rect.right && py >= rect.top && py <= rect.bottom;
+        }
+
+        function gameLoop(time) {
+            if (canvas.width !== canvas.clientWidth) { canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight; }
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (handLandmarker && video.readyState >= 2) {
+                const results = handLandmarker.detectForVideo(video, time);
+
+                // 1. Update position IF hand detected
+                if (results.landmarks && results.landmarks[0]) {
+                    const smoothPos = getSmoothedPalm(results.landmarks[0], canvas.width, canvas.height);
+
+                    const tipData = drawCatPaw(smoothPos.x, smoothPos.y);
+
+                    if (gameActive && canInteract) {
+                        const containerRect = document.getElementById('game-container').getBoundingClientRect();
+                        const hx = containerRect.left + tipData.x * containerRect.width;
+                        const hy = containerRect.top + tipData.y * containerRect.height;
+
+                        const rArea = document.getElementById('area-radish');
+                        const tArea = document.getElementById('area-tissue');
+                        const rRect = rArea.getBoundingClientRect();
+                        const tRect = tArea.getBoundingClientRect();
+
+                        if (isPointInRect(hx, hy, rRect)) {
+                            handleResult(currentCommand === 'radish');
+                        } else if (isPointInRect(hx, hy, tRect)) {
+                            handleResult(currentCommand === 'tissue');
+                        }
+                    }
+                }
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        initAI();
+    </script>
+</body>
+
+</html>
