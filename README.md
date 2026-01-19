@@ -3,7 +3,8 @@
 ### 项目简介
 FitGamer 是一个基于 Next.js 的创新体感互动游戏平台。通过先进的 AI 视觉识别技术，用户只需使用普通的电脑摄像头即可进行各种体感游戏，无需购买昂贵的额外硬件外设。本项目致力于将健身与娱乐结合，提供简单、有趣且易于访问的体感交互体验。
 
-![FitGamer Screenshot](./public/screenshot/Capture%20002%20-%20Motion%20Play%20Platform%20-%20%5BFitGamer.com%5D.png)
+
+![FitGamer Screenshot](<public/screenshot/Capture 002 - Motion Play Platform - [fitgamerai.com].png>)
 
 #阿里云ESA Pages #阿里云云工开物
 
